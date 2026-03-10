@@ -3,8 +3,6 @@ dist
 .env
 .git
 .gitignore
-README.md
-DEPLOYMENT_INSTRUCTIONS.md
 npm-debug.log
 docker-compose.yml
 *.md

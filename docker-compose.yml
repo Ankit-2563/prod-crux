@@ -11,6 +11,4 @@ services:
       - .env
     environment:
       - NODE_ENV=production
-    # If your MongoDB is running locally on the EC2 instance, you might want to uncomment this 
-    # to allow the container to reach the host's localhost directly, or manage a DB service here.
-    # network_mode: "host"
+
