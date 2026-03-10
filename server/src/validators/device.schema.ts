@@ -13,7 +13,7 @@ export const hardwareRegisterSchema = z.object({
     .max(128, "deviceSecret too long"),
   firmwareVersion: z.string().max(32).optional(),
 });
-
+ 
 // Client: user entering a device ID to pair
 export const pairDeviceSchema = z.object({
   deviceId: z

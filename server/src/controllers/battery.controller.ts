@@ -151,14 +151,15 @@ export const getBatteryMetrics = async (
 };
 
 // ─────────────────────────────────────────────
-// CLIENT ENDPOINT
-// Get the latest single reading for a device
-// GET /api/battery/:deviceId/latest
+// CLIENT ENDPOINTS for specific metrics
+// GET /api/battery/:deviceId/<metric>
 // Headers: Authorization: Bearer <access_token>
 // ─────────────────────────────────────────────
-export const getLatestBatteryMetric = async (
+
+const getLatestDeviceField = async (
   req: AuthRequest,
   res: Response,
+  field: "soh" | "soc" | "temperature" | "power" | "voltage" | "current"
 ): Promise<void> => {
   try {
     const { deviceId } = req.params;
@@ -178,7 +179,8 @@ export const getLatestBatteryMetric = async (
 
     const latest = await BatteryMetric.findOne({ deviceId })
       .sort({ recordedAt: -1 })
-      .select("-__v");
+      .select(`deviceId recordedAt ${field}`)
+      .lean();
 
     if (!latest) {
       res.status(404).json({ success: false, message: "No data recorded yet for this device" });
@@ -187,12 +189,65 @@ export const getLatestBatteryMetric = async (
 
     res.status(200).json({
       success: true,
-      data: { metric: latest },
+      data: {
+        deviceId: latest.deviceId,
+        recordedAt: latest.recordedAt,
+        [field]: latest[field],
+      },
     });
   } catch (error: any) {
     res.status(500).json({
       success: false,
-      message: error.message || "Error fetching latest metric",
+      message: error.message || `Error fetching latest ${field}`,
     });
+  }
+};
+
+export const getDeviceSoh = async (req: AuthRequest, res: Response): Promise<void> => { await getLatestDeviceField(req, res, "soh"); };
+export const getDeviceSoc = async (req: AuthRequest, res: Response): Promise<void> => { await getLatestDeviceField(req, res, "soc"); };
+export const getDeviceTemperature = async (req: AuthRequest, res: Response): Promise<void> => { await getLatestDeviceField(req, res, "temperature"); };
+export const getDevicePower = async (req: AuthRequest, res: Response): Promise<void> => { await getLatestDeviceField(req, res, "power"); };
+export const getDeviceVoltage = async (req: AuthRequest, res: Response): Promise<void> => { await getLatestDeviceField(req, res, "voltage"); };
+export const getDeviceCurrent = async (req: AuthRequest, res: Response): Promise<void> => { await getLatestDeviceField(req, res, "current"); };
+
+
+// CLIENT ENDPOINT
+// Dashboard overview — latest reading for ALL devices owned by user
+// GET /api/battery
+// Headers: Authorization: Bearer <access_token>
+
+export const getAllDevicesLatest = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const devices = await Device.find({ userId: req.user!.id, isPaired: true }).select("deviceId lastSeen");
+
+    if (!devices.length) {
+      res.status(200).json({ success: true, data: { devices: [] } });
+      return;
+    }
+
+    const deviceIds = devices.map((d) => d.deviceId);
+
+    // Get the most recent metric per device in one aggregation
+    const latestMetrics = await BatteryMetric.aggregate([
+      { $match: { deviceId: { $in: deviceIds } } },
+      { $sort: { recordedAt: -1 } },
+      { $group: { _id: "$deviceId", metric: { $first: "$$ROOT" } } },
+    ]);
+
+    const metricMap: Record<string, any> = {};
+    latestMetrics.forEach((m) => { metricMap[m._id] = m.metric; });
+
+    const result = devices.map((d) => ({
+      deviceId: d.deviceId,
+      lastSeen: d.lastSeen,
+      latestMetric: metricMap[d.deviceId] || null,
+    }));
+
+    res.status(200).json({ success: true, data: { devices: result } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message || "Error fetching device overview" });
   }
 };

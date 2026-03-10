@@ -14,7 +14,7 @@ import {
 
 const router = Router();
 
-// ─── Hardware Routes (called by ESP32 via EC200U) ───────────────────────────
+//  Hardware Routes (called by ESP32 via EC200U) 
 // No user auth — device authenticates with its own secret
 router.post(
   "/hardware/register",
@@ -22,7 +22,7 @@ router.post(
   hardwareRegister,
 );
 
-// ─── Client Routes (called by React Native app) ──────────────────────────────
+//  Client Routes (called by React Native app) 
 router.post(
   "/devices/pair",
   authenticate,

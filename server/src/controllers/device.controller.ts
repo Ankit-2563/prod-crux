@@ -3,12 +3,12 @@ import crypto from "crypto";
 import Device from "../models/device.model";
 import { AuthRequest } from "../middleware/auth.middleware";
 
-// ─────────────────────────────────────────────
+
 // HARDWARE ENDPOINT
 // Called by the ESP32 on boot via EC200U AT commands
 // POST /api/hardware/register
 // Body: { deviceId, deviceSecret, firmwareVersion? }
-// ─────────────────────────────────────────────
+
 export const hardwareRegister = async (
   req: Request,
   res: Response,
@@ -81,13 +81,13 @@ export const hardwareRegister = async (
   }
 };
 
-// ─────────────────────────────────────────────
+
 // CLIENT ENDPOINT
 // Called by the React Native app after the user types in their Device ID
 // POST /api/devices/pair
 // Headers: Authorization: Bearer <access_token>
 // Body: { deviceId }
-// ─────────────────────────────────────────────
+
 export const pairDevice = async (
   req: AuthRequest,
   res: Response,
@@ -158,12 +158,12 @@ export const pairDevice = async (
   }
 };
 
-// ─────────────────────────────────────────────
+
 // CLIENT ENDPOINT
 // Get all devices for the logged-in user
 // GET /api/devices
 // Headers: Authorization: Bearer <access_token>
-// ─────────────────────────────────────────────
+
 export const getMyDevices = async (
   req: AuthRequest,
   res: Response,
@@ -185,12 +185,12 @@ export const getMyDevices = async (
   }
 };
 
-// ─────────────────────────────────────────────
+
 // CLIENT ENDPOINT
 // Unpair a device from the user's account
 // DELETE /api/devices/:deviceId
 // Headers: Authorization: Bearer <access_token>
-// ─────────────────────────────────────────────
+
 export const unpairDevice = async (
   req: AuthRequest,
   res: Response,
