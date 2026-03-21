@@ -8,7 +8,7 @@ import { AuthRequest } from "../middleware/auth.middleware";
 // HARDWARE ENDPOINT
 // Called by the ESP32 periodically to push sensor readings
 // POST /api/hardware/data
-// Body: { deviceId, deviceSecret, temperature, voltage, power, current, soc, soh, recordedAt? }
+// Body: { deviceId, deviceSecret, temperature, voltage, power, current, recordedAt? }
 // ─────────────────────────────────────────────
 export const receiveBatteryData = async (
   req: Request,
@@ -22,8 +22,6 @@ export const receiveBatteryData = async (
       voltage,
       power,
       current,
-      soc,
-      soh,
       recordedAt,
     } = req.body;
 
@@ -59,8 +57,6 @@ export const receiveBatteryData = async (
       voltage,
       power,
       current,
-      soc,
-      soh,
       recordedAt: recordedAt ? new Date(recordedAt) : new Date(),
     });
 
@@ -159,7 +155,7 @@ export const getBatteryMetrics = async (
 const getLatestDeviceField = async (
   req: AuthRequest,
   res: Response,
-  field: "soh" | "soc" | "temperature" | "power" | "voltage" | "current"
+  field: "temperature" | "power" | "voltage" | "current"
 ): Promise<void> => {
   try {
     const { deviceId } = req.params;
@@ -203,8 +199,6 @@ const getLatestDeviceField = async (
   }
 };
 
-export const getDeviceSoh = async (req: AuthRequest, res: Response): Promise<void> => { await getLatestDeviceField(req, res, "soh"); };
-export const getDeviceSoc = async (req: AuthRequest, res: Response): Promise<void> => { await getLatestDeviceField(req, res, "soc"); };
 export const getDeviceTemperature = async (req: AuthRequest, res: Response): Promise<void> => { await getLatestDeviceField(req, res, "temperature"); };
 export const getDevicePower = async (req: AuthRequest, res: Response): Promise<void> => { await getLatestDeviceField(req, res, "power"); };
 export const getDeviceVoltage = async (req: AuthRequest, res: Response): Promise<void> => { await getLatestDeviceField(req, res, "voltage"); };

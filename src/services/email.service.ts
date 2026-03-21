@@ -20,7 +20,7 @@ export const sendPasswordResetEmail = async (
   resetToken: string
 ): Promise<void> => {
   const mailOptions = {
-    from: `"Crux App" <${EMAIL_USER}>`,
+    from: `"Crux" <${EMAIL_USER}>`,
     to: toEmail,
     subject: "Your Password Reset Code",
     html: `

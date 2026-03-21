@@ -19,8 +19,6 @@
 | POST   | `/hardware/data` | Receive battery data from ESP32 hardware (validated).
 | GET    | `/battery` (protected) | Get latest battery reading for all devices of the authenticated user.
 | GET    | `/battery/:deviceId` (protected) | Get paginated list of battery readings for a specific device.
-| GET    | `/battery/:deviceId/soh` (protected) | Get the most recent State of Health (SOH) reading for a specific device.
-| GET    | `/battery/:deviceId/soc` (protected) | Get the most recent State of Charge (SOC) reading for a specific device.
 | GET    | `/battery/:deviceId/temperature` (protected) | Get the most recent temperature reading for a specific device.
 | GET    | `/battery/:deviceId/power` (protected) | Get the most recent power reading for a specific device.
 | GET    | `/battery/:deviceId/voltage` (protected) | Get the most recent voltage reading for a specific device.

@@ -2,8 +2,6 @@ import { Router } from "express";
 import {
   receiveBatteryData,
   getBatteryMetrics,
-  getDeviceSoh,
-  getDeviceSoc,
   getDeviceTemperature,
   getDevicePower,
   getDeviceVoltage,
@@ -28,8 +26,6 @@ router.get("/battery", authenticate, getAllDevicesLatest);
 router.get("/battery/:deviceId", authenticate, getBatteryMetrics);
 
 // Per-device: focused latest readings for specific metrics
-router.get("/battery/:deviceId/soh", authenticate, getDeviceSoh);
-router.get("/battery/:deviceId/soc", authenticate, getDeviceSoc);
 router.get("/battery/:deviceId/temperature", authenticate, getDeviceTemperature);
 router.get("/battery/:deviceId/power", authenticate, getDevicePower);
 router.get("/battery/:deviceId/voltage", authenticate, getDeviceVoltage);

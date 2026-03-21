@@ -7,8 +7,6 @@ export interface IBatteryMetric extends Document {
   voltage: number;      // V
   power: number;        // W
   current: number;      // A
-  soc: number;          // % State of Charge (0–100)
-  soh: number;          // % State of Health (0–100)
   recordedAt: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -43,18 +41,6 @@ const batteryMetricSchema = new Schema<IBatteryMetric>(
     current: {
       type: Number,
       required: [true, "current is required"],
-    },
-    soc: {
-      type: Number,
-      required: [true, "soc is required"],
-      min: [0, "SOC cannot be below 0"],
-      max: [100, "SOC cannot exceed 100"],
-    },
-    soh: {
-      type: Number,
-      required: [true, "soh is required"],
-      min: [0, "SOH cannot be below 0"],
-      max: [100, "SOH cannot exceed 100"],
     },
     recordedAt: {
       type: Date,
