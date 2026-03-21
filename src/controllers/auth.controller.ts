@@ -6,6 +6,7 @@ import User from "../models/user.model";
 import TokenBlacklist from "../models/tokenBlacklist.model";
 import RefreshToken from "../models/refreshToken.model";
 import { AuthRequest } from "../middleware/auth.middleware";
+import { sendPasswordResetEmail } from "../services/email.service";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const REFRESH_SECRET = process.env.REFRESH_SECRET;
@@ -168,25 +169,25 @@ export const forgotPassword = async (
       return;
     }
 
-    // Generate reset token
-    const resetToken = crypto.randomBytes(32).toString("hex");
+    // Generate 6-digit OTP (easy for user to type)
+    const resetToken = Math.floor(100000 + Math.random() * 900000).toString();
     const resetPasswordToken = crypto
       .createHash("sha256")
       .update(resetToken)
       .digest("hex");
-    const resetPasswordExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+    const resetPasswordExpires = new Date(Date.now() + 1 * 60 * 1000); // 1 minute
 
     // Save reset token to user
     user.resetPasswordToken = resetPasswordToken;
     user.resetPasswordExpires = resetPasswordExpires;
     await user.save();
 
-    // In a real application, you would send an email with the reset token
-    // TODO For now, we'll return it in the response (remove this in production)
+    // Send reset token to user via email
+    await sendPasswordResetEmail(user.email, resetToken);
+
     res.status(200).json({
       success: true,
       message: "If the email exists, a reset link has been sent",
-      resetToken, // Remove this in production - only for testing
     });
   } catch (error: any) {
     res.status(500).json({
