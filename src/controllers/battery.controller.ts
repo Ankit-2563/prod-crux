@@ -204,6 +204,52 @@ export const getDevicePower = async (req: AuthRequest, res: Response): Promise<v
 export const getDeviceVoltage = async (req: AuthRequest, res: Response): Promise<void> => { await getLatestDeviceField(req, res, "voltage"); };
 export const getDeviceCurrent = async (req: AuthRequest, res: Response): Promise<void> => { await getLatestDeviceField(req, res, "current"); };
 
+export const getDeviceAllMetrics = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { deviceId } = req.params;
+
+    // Verify ownership
+    const device = await Device.findOne({ deviceId });
+
+    if (!device) {
+      res.status(404).json({ success: false, message: "Device not found" });
+      return;
+    }
+
+    if (!device.userId || device.userId.toString() !== req.user!.id) {
+      res.status(403).json({ success: false, message: "You do not own this device" });
+      return;
+    }
+
+    const latest = await BatteryMetric.findOne({ deviceId })
+      .sort({ recordedAt: -1 })
+      .select("deviceId recordedAt temperature power voltage current")
+      .lean();
+
+    if (!latest) {
+      res.status(404).json({ success: false, message: "No data recorded yet for this device" });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        deviceId: latest.deviceId,
+        recordedAt: latest.recordedAt,
+        temperature: latest.temperature,
+        power: latest.power,
+        voltage: latest.voltage,
+        current: latest.current,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: error.message || "Error fetching latest metrics",
+    });
+  }
+};
+
 
 // CLIENT ENDPOINT
 // Dashboard overview — latest reading for ALL devices owned by user

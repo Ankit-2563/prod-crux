@@ -23,6 +23,7 @@
 | GET    | `/battery/:deviceId/power` (protected) | Get the most recent power reading for a specific device.
 | GET    | `/battery/:deviceId/voltage` (protected) | Get the most recent voltage reading for a specific device.
 | GET    | `/battery/:deviceId/current` (protected) | Get the most recent current reading for a specific device.
+| GET    | `/battery/:deviceId/all` (protected) | Get the most recent temperature, power, voltage, and current readings for a specific device in one response.
 
 ## Device (`src/routes/device.routes.ts`)
 

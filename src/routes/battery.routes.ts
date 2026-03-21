@@ -6,6 +6,7 @@ import {
   getDevicePower,
   getDeviceVoltage,
   getDeviceCurrent,
+  getDeviceAllMetrics,
   getAllDevicesLatest,
 } from "../controllers/battery.controller";
 import { authenticate } from "../middleware/auth.middleware";
@@ -30,5 +31,6 @@ router.get("/battery/:deviceId/temperature", authenticate, getDeviceTemperature)
 router.get("/battery/:deviceId/power", authenticate, getDevicePower);
 router.get("/battery/:deviceId/voltage", authenticate, getDeviceVoltage);
 router.get("/battery/:deviceId/current", authenticate, getDeviceCurrent);
+router.get("/battery/:deviceId/all", authenticate, getDeviceAllMetrics);
 
 export default router;
