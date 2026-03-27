@@ -32,4 +32,4 @@
 | POST   | `/hardware/register` | Register a new hardware device (no user auth, device secret).
 | POST   | `/devices/pair` (protected) | Pair a device to the authenticated user's account.
 | GET    | `/devices` (protected) | Retrieve list of devices owned by the authenticated user.
-| DELETE | `/devices/:deviceId` (protected) | Unpair (delete) a device from the user's account.
+| DELETE | `/devices/:deviceId` (protected) | Unpair (delete) device from the user's account.
