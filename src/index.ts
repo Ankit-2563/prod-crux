@@ -18,7 +18,12 @@ const PORT = process.env.PORT || 4000;
 app.use(helmet());
 
 // CORS — open for React Native & hardware clients (CORS is browser-only)
-app.use(cors());
+// Restricted to local dev or explicitly configured origin
+const corsOptions = {
+  origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+  credentials: true,
+};
+app.use(cors(corsOptions));
 
 // Body Parser Middleware
 app.use(express.json());

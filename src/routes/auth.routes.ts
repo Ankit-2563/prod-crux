@@ -16,14 +16,15 @@ import {
   forgotPasswordSchema,
   resetPasswordSchema,
 } from "../validators/auth.schema";
+import { authLimiter, resetPasswordLimiter } from "../middleware/rateLimiter.middleware";
 
 const router = Router();
 
 // Public routes with validation
 router.post("/signup", validate(signupSchema), signup);
-router.post("/signin", validate(signinSchema), signin);
-router.post("/forgot-password", validate(forgotPasswordSchema), forgotPassword);
-router.post("/reset-password", validate(resetPasswordSchema), resetPassword);
+router.post("/signin", authLimiter, validate(signinSchema), signin);
+router.post("/forgot-password", resetPasswordLimiter, validate(forgotPasswordSchema), forgotPassword);
+router.post("/reset-password", resetPasswordLimiter, validate(resetPasswordSchema), resetPassword);
 router.post("/refresh-token", refreshTokenHandler);
 
 // Protected routes

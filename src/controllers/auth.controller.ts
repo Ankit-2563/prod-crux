@@ -169,8 +169,8 @@ export const forgotPassword = async (
       return;
     }
 
-    // Generate 6-digit OTP (easy for user to type)
-    const resetToken = Math.floor(100000 + Math.random() * 900000).toString();
+    // Generate 6-digit OTP securely (easy for user to type)
+    const resetToken = crypto.randomInt(100000, 1000000).toString();
     const resetPasswordToken = crypto
       .createHash("sha256")
       .update(resetToken)
