@@ -14,12 +14,12 @@ export const hardwareRegister = async (
   res: Response,
 ): Promise<void> => {
   try {
-    const { deviceId, deviceSecret, firmwareVersion } = req.body;
+    const { deviceId, deviceSecret, deviceName, firmwareVersion } = req.body;
 
-    if (!deviceId || !deviceSecret) {
+    if (!deviceId || !deviceSecret || !deviceName) {
       res.status(400).json({
         success: false,
-        message: "deviceId and deviceSecret are required",
+        message: "deviceId, deviceSecret, and deviceName are required",
       });
       return;
     }
@@ -35,6 +35,7 @@ export const hardwareRegister = async (
       // First time this device has ever connected — register it
       device = await Device.create({
         deviceId,
+        deviceName,
         deviceSecretHash: secretHash,
         lastSeen: new Date(),
         firmwareVersion: firmwareVersion || null,
@@ -45,6 +46,7 @@ export const hardwareRegister = async (
         message: "Device registered successfully",
         data: {
           deviceId: device.deviceId,
+          deviceName: device.deviceName,
           isPaired: device.isPaired,
         },
       });
@@ -60,8 +62,9 @@ export const hardwareRegister = async (
       return;
     }
 
-    // Update lastSeen and firmware version
+    // Update lastSeen, deviceName, and firmware version
     device.lastSeen = new Date();
+    device.deviceName = deviceName;
     if (firmwareVersion) device.firmwareVersion = firmwareVersion;
     await device.save();
 
@@ -70,6 +73,7 @@ export const hardwareRegister = async (
       message: "Device check-in successful",
       data: {
         deviceId: device.deviceId,
+        deviceName: device.deviceName,
         isPaired: device.isPaired,
       },
     });

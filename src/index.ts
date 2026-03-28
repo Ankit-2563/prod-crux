@@ -4,6 +4,7 @@ import helmet from "helmet";
 import dotenv from "dotenv";
 import connectDB from "./config/database";
 import authRoutes from "./routes/auth.routes";
+import hardwareRoutes from "./routes/hardware.routes";
 import deviceRoutes from "./routes/device.routes";
 import batteryRoutes from "./routes/battery.routes";
 import { sanitizeRequest } from "./middleware/sanitize.middleware";
@@ -16,13 +17,8 @@ const PORT = process.env.PORT || 4000;
 // Security Middleware
 app.use(helmet());
 
-// CORS Configuration
-const corsOptions = {
-  origin: process.env.CLIENT_URL || "http://localhost:3000",
-  credentials: true,
-  optionsSuccessStatus: 200,
-};
-app.use(cors(corsOptions));
+// CORS — open for React Native & hardware clients (CORS is browser-only)
+app.use(cors());
 
 // Body Parser Middleware
 app.use(express.json());
@@ -40,8 +36,9 @@ app.get("/", (req: Request, res: Response) => {
 });
 
 app.use("/api/auth", authRoutes);
-app.use("/api", deviceRoutes);
-app.use("/api", batteryRoutes);
+app.use("/api/hardware", hardwareRoutes);
+app.use("/api/devices", deviceRoutes);
+app.use("/api/battery", batteryRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {

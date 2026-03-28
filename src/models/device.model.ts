@@ -3,6 +3,7 @@ import crypto from "crypto";
 
 export interface IDevice extends Document {
   deviceId: string;
+  deviceName: string;
   deviceSecretHash: string;
   userId?: mongoose.Types.ObjectId;
   isPaired: boolean;
@@ -20,6 +21,11 @@ const deviceSchema = new Schema<IDevice>(
       unique: true,
       trim: true,
       index: true,
+    },
+    deviceName: {
+      type: String,
+      required: [true, "Device name is required"],
+      trim: true,
     },
     deviceSecretHash: {
       type: String,

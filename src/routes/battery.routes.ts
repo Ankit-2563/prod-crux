@@ -1,36 +1,30 @@
 import { Router } from "express";
 import {
-  receiveBatteryData,
   getBatteryMetrics,
   getDeviceTemperature,
   getDevicePower,
   getDeviceVoltage,
   getDeviceCurrent,
+  getDeviceSoc,
   getDeviceAllMetrics,
   getAllDevicesLatest,
 } from "../controllers/battery.controller";
 import { authenticate } from "../middleware/auth.middleware";
-import { validate } from "../middleware/validation.middleware";
-import { batteryDataSchema } from "../validators/device.schema";
 
 const router = Router();
 
-//Hardware Routes (ESP32 via EC200U) 
-router.post("/hardware/data", validate(batteryDataSchema), receiveBatteryData);
-
-//Client Routes 
-
 // Dashboard: latest reading for ALL user's devices
-router.get("/battery", authenticate, getAllDevicesLatest);
+router.get("/", authenticate, getAllDevicesLatest);
 
 // Per-device: paginated list of readings
-router.get("/battery/:deviceId", authenticate, getBatteryMetrics);
+router.get("/:deviceId", authenticate, getBatteryMetrics);
 
 // Per-device: focused latest readings for specific metrics
-router.get("/battery/:deviceId/temperature", authenticate, getDeviceTemperature);
-router.get("/battery/:deviceId/power", authenticate, getDevicePower);
-router.get("/battery/:deviceId/voltage", authenticate, getDeviceVoltage);
-router.get("/battery/:deviceId/current", authenticate, getDeviceCurrent);
-router.get("/battery/:deviceId/all", authenticate, getDeviceAllMetrics);
+router.get("/:deviceId/temperature", authenticate, getDeviceTemperature);
+router.get("/:deviceId/power", authenticate, getDevicePower);
+router.get("/:deviceId/voltage", authenticate, getDeviceVoltage);
+router.get("/:deviceId/current", authenticate, getDeviceCurrent);
+router.get("/:deviceId/soc", authenticate, getDeviceSoc);
+router.get("/:deviceId/all", authenticate, getDeviceAllMetrics);
 
 export default router;

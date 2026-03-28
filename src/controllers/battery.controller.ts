@@ -1,66 +1,45 @@
 import { Request, Response } from "express";
-import crypto from "crypto";
 import Device from "../models/device.model";
 import BatteryMetric from "../models/batteryMetric.model";
 import { AuthRequest } from "../middleware/auth.middleware";
+import { DeviceRequest } from "../middleware/device.middleware";
 
 // ─────────────────────────────────────────────
 // HARDWARE ENDPOINT
 // Called by the ESP32 periodically to push sensor readings
 // POST /api/hardware/data
-// Body: { deviceId, deviceSecret, temperature, voltage, power, current, recordedAt? }
+// Headers: x-device-id, x-device-secret (authenticated by middleware)
+// Body: { temperature, voltage, power, current, soc, recordedAt? }
 // ─────────────────────────────────────────────
 export const receiveBatteryData = async (
-  req: Request,
+  req: DeviceRequest,
   res: Response,
 ): Promise<void> => {
   try {
+    const device = req.device!;
+
     const {
-      deviceId,
-      deviceSecret,
       temperature,
       voltage,
       power,
       current,
+      soc,
       recordedAt,
     } = req.body;
 
-    // ── 1. Authenticate device ──────────────────────────────────────────────
-    const device = await Device.findOne({ deviceId });
-
-    if (!device) {
-      res.status(404).json({
-        success: false,
-        message: "Device not found. Register the device first.",
-      });
-      return;
-    }
-
-    const secretHash = crypto
-      .createHash("sha256")
-      .update(deviceSecret)
-      .digest("hex");
-
-    if (device.deviceSecretHash !== secretHash) {
-      res.status(401).json({
-        success: false,
-        message: "Invalid device secret",
-      });
-      return;
-    }
-
-    // ── 2. Save metric ──────────────────────────────────────────────────────
+    // ── 1. Save metric ──────────────────────────────────────────────────────
     const metric = await BatteryMetric.create({
-      deviceId,
+      deviceId: device.deviceId,
       userId: device.userId ?? undefined,
       temperature,
       voltage,
       power,
       current,
+      soc,
       recordedAt: recordedAt ? new Date(recordedAt) : new Date(),
     });
 
-    // ── 3. Update device lastSeen ───────────────────────────────────────────
+    // ── 2. Update device lastSeen ───────────────────────────────────────────
     device.lastSeen = new Date();
     await device.save();
 
@@ -155,7 +134,7 @@ export const getBatteryMetrics = async (
 const getLatestDeviceField = async (
   req: AuthRequest,
   res: Response,
-  field: "temperature" | "power" | "voltage" | "current"
+  field: "temperature" | "power" | "voltage" | "current" | "soc"
 ): Promise<void> => {
   try {
     const { deviceId } = req.params;
@@ -203,6 +182,7 @@ export const getDeviceTemperature = async (req: AuthRequest, res: Response): Pro
 export const getDevicePower = async (req: AuthRequest, res: Response): Promise<void> => { await getLatestDeviceField(req, res, "power"); };
 export const getDeviceVoltage = async (req: AuthRequest, res: Response): Promise<void> => { await getLatestDeviceField(req, res, "voltage"); };
 export const getDeviceCurrent = async (req: AuthRequest, res: Response): Promise<void> => { await getLatestDeviceField(req, res, "current"); };
+export const getDeviceSoc = async (req: AuthRequest, res: Response): Promise<void> => { await getLatestDeviceField(req, res, "soc"); };
 
 export const getDeviceAllMetrics = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -223,7 +203,7 @@ export const getDeviceAllMetrics = async (req: AuthRequest, res: Response): Prom
 
     const latest = await BatteryMetric.findOne({ deviceId })
       .sort({ recordedAt: -1 })
-      .select("deviceId recordedAt temperature power voltage current")
+      .select("deviceId recordedAt temperature power voltage current soc")
       .lean();
 
     if (!latest) {
@@ -240,6 +220,7 @@ export const getDeviceAllMetrics = async (req: AuthRequest, res: Response): Prom
         power: latest.power,
         voltage: latest.voltage,
         current: latest.current,
+        soc: latest.soc,
       },
     });
   } catch (error: any) {
