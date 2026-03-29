@@ -1,4 +1,5 @@
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import type { AuthRequest } from "./auth.middleware";
 
 // Limit login attempts
 export const authLimiter = rateLimit({
@@ -32,9 +33,11 @@ export const aiInsightLimiter = rateLimit({
     success: false,
     message: "Too many insight requests, please try again after 15 minutes",
   },
-  keyGenerator: (req) => {
-    // Rate-limit per authenticated user, not just IP
-    return (req as any).user?.id || req.ip || "unknown";
+  keyGenerator: (req: AuthRequest) => {
+    // Per user when JWT is present; IPv6-safe IP key per express-rate-limit v8
+    if (req.user?.id) return `user:${req.user.id}`;
+    const ip = req.ip;
+    return ip ? ipKeyGenerator(ip) : "unknown";
   },
   standardHeaders: true,
   legacyHeaders: false,
