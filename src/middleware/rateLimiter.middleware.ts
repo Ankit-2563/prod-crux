@@ -23,3 +23,19 @@ export const resetPasswordLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+// Limit AI insight requests (Gemini/OpenAI calls cost money)
+export const aiInsightLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 insight requests per user per window
+  message: {
+    success: false,
+    message: "Too many insight requests, please try again after 15 minutes",
+  },
+  keyGenerator: (req) => {
+    // Rate-limit per authenticated user, not just IP
+    return (req as any).user?.id || req.ip || "unknown";
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});

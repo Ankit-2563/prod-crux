@@ -343,12 +343,59 @@ const generateAIInsight = async (
   return insightSchema.parse(parsed);
 };
 
+// ─── In-memory insight cache ─────────────────────────────────────────────────
+// Battery health doesn't change second-to-second. Caching avoids redundant
+// Gemini/OpenAI calls and MongoDB queries. This runs on the server — the
+// React Native frontend just calls the same endpoint and gets faster responses.
+
+const INSIGHT_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+interface CachedInsight {
+  data: {
+    insight: BatteryHealthInsight;
+    source: "ai" | "heuristic";
+    providerUsed: "openai" | "gemini" | "none";
+    summary: BatteryFeatureSummary;
+  };
+  createdAt: number;
+}
+
+const insightCache = new Map<string, CachedInsight>();
+
+/** Evict stale entries (called automatically on every lookup) */
+const evictStale = (): void => {
+  const now = Date.now();
+  for (const [key, entry] of insightCache) {
+    if (now - entry.createdAt > INSIGHT_CACHE_TTL_MS) {
+      insightCache.delete(key);
+    }
+  }
+};
+
+/** Clear cache for a specific device (useful after new data ingestion) */
+export const clearInsightCache = (deviceId?: string): void => {
+  if (deviceId) {
+    insightCache.delete(deviceId);
+  } else {
+    insightCache.clear();
+  }
+};
+
 export const getBatteryHealthInsight = async (deviceId: string): Promise<{
   insight: BatteryHealthInsight;
   source: "ai" | "heuristic";
   providerUsed: "openai" | "gemini" | "none";
   summary: BatteryFeatureSummary;
+  cached?: boolean;
 }> => {
+  // ── Check cache first ──────────────────────────────────────────────────────
+  evictStale();
+  const cached = insightCache.get(deviceId);
+  if (cached) {
+    return { ...cached.data, cached: true };
+  }
+
+  // ── Cache miss — run full pipeline ─────────────────────────────────────────
   const metrics = await BatteryMetric.find({ deviceId })
     .sort({ recordedAt: -1 })
     .limit(2000)
@@ -368,30 +415,43 @@ export const getBatteryHealthInsight = async (deviceId: string): Promise<{
       ? (providerRaw as "openai" | "gemini")
       : null;
 
+  let result: {
+    insight: BatteryHealthInsight;
+    source: "ai" | "heuristic";
+    providerUsed: "openai" | "gemini" | "none";
+    summary: BatteryFeatureSummary;
+  };
+
   if (!provider) {
-    return {
+    result = {
       insight: fallbackInsight,
       source: "heuristic",
       providerUsed: "none",
       summary: featureSummary,
     };
+  } else {
+    try {
+      const prompt = buildPrompt(deviceId, featureSummary);
+      const aiInsight = await generateAIInsight(provider, prompt);
+      result = {
+        insight: aiInsight,
+        source: "ai",
+        providerUsed: provider,
+        summary: featureSummary,
+      };
+    } catch (_error) {
+      result = {
+        insight: fallbackInsight,
+        source: "heuristic",
+        providerUsed: provider,
+        summary: featureSummary,
+      };
+    }
   }
 
-  try {
-    const prompt = buildPrompt(deviceId, featureSummary);
-    const aiInsight = await generateAIInsight(provider, prompt);
-    return {
-      insight: aiInsight,
-      source: "ai",
-      providerUsed: provider,
-      summary: featureSummary,
-    };
-  } catch (_error) {
-    return {
-      insight: fallbackInsight,
-      source: "heuristic",
-      providerUsed: provider,
-      summary: featureSummary,
-    };
-  }
+  // ── Store in cache ─────────────────────────────────────────────────────────
+  insightCache.set(deviceId, { data: result, createdAt: Date.now() });
+
+  return result;
 };
+
