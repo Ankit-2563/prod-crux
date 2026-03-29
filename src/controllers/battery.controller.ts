@@ -3,6 +3,7 @@ import Device from "../models/device.model";
 import BatteryMetric from "../models/batteryMetric.model";
 import { AuthRequest } from "../middleware/auth.middleware";
 import { DeviceRequest } from "../middleware/device.middleware";
+import { getBatteryHealthInsight } from "../services/batteryHealthInsight.service";
 
 // ─────────────────────────────────────────────
 // HARDWARE ENDPOINT
@@ -227,6 +228,46 @@ export const getDeviceAllMetrics = async (req: AuthRequest, res: Response): Prom
     res.status(500).json({
       success: false,
       message: error.message || "Error fetching latest metrics",
+    });
+  }
+};
+
+export const getDeviceHealthInsight = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const deviceIdParam = req.params.deviceId;
+    const deviceId = Array.isArray(deviceIdParam) ? deviceIdParam[0] : deviceIdParam;
+
+    const device = await Device.findOne({ deviceId });
+    if (!device) {
+      res.status(404).json({ success: false, message: "Device not found" });
+      return;
+    }
+
+    if (!device.userId || device.userId.toString() !== req.user!.id) {
+      res.status(403).json({ success: false, message: "You do not own this device" });
+      return;
+    }
+
+    const result = await getBatteryHealthInsight(deviceId);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        deviceId,
+        generatedAt: new Date().toISOString(),
+        source: result.source,
+        providerUsed: result.providerUsed,
+        insight: result.insight,
+        telemetrySummary: result.summary,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: error.message || "Error generating battery health insight",
     });
   }
 };

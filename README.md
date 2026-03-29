@@ -41,3 +41,14 @@ All endpoints are prefixed with `/api`.
 | GET    | `/api/battery/:deviceId/current` | (Protected) Get the most recent current reading for a specific device.
 | GET    | `/api/battery/:deviceId/soc` | (Protected) Get the most recent State of Charge (SoC) reading for a specific device.
 | GET    | `/api/battery/:deviceId/all` | (Protected) Get the most recent temperature, power, voltage, current, and SoC readings for a specific device in one response.
+| GET    | `/api/battery/:deviceId/health-insight` | (Protected) Generate battery health insights from historical telemetry with AI provider fallback to heuristic analysis.
+
+## AI Battery Insight Configuration
+
+Set these environment variables for AI-powered insights:
+
+- `AI_PROVIDER`: `gemini` or `openai` (any other value uses heuristic-only mode)
+- `GEMINI_API_KEY`: required when `AI_PROVIDER=gemini`
+- `GEMINI_MODEL`: optional, defaults to `gemini-2.0-flash`
+- `OPENAI_API_KEY`: required when `AI_PROVIDER=openai`
+- `OPENAI_MODEL`: optional, defaults to `gpt-4o-mini`

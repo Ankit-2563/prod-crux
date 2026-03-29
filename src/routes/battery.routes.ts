@@ -8,6 +8,7 @@ import {
   getDeviceSoc,
   getDeviceAllMetrics,
   getAllDevicesLatest,
+  getDeviceHealthInsight,
 } from "../controllers/battery.controller";
 import { authenticate } from "../middleware/auth.middleware";
 
@@ -26,5 +27,6 @@ router.get("/:deviceId/voltage", authenticate, getDeviceVoltage);
 router.get("/:deviceId/current", authenticate, getDeviceCurrent);
 router.get("/:deviceId/soc", authenticate, getDeviceSoc);
 router.get("/:deviceId/all", authenticate, getDeviceAllMetrics);
+router.get("/:deviceId/health-insight", authenticate, getDeviceHealthInsight);
 
 export default router;
