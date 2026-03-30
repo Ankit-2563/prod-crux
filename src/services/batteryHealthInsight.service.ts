@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import BatteryMetric, { IBatteryMetric } from "../models/batteryMetric.model";
 
 type HealthLevel = "good" | "moderate" | "poor";
@@ -210,43 +211,12 @@ const buildDeterministicInsight = (
   };
 };
 
-const buildPrompt = (deviceId: string, featureSummary: BatteryFeatureSummary): string => {
-  return [
-    "You are a battery diagnostics assistant.",
-    "Return valid JSON only and strictly follow the requested schema.",
-    "Do not invent facts not present in the input.",
-    "",
-    `Device ID: ${deviceId}`,
-    `sampleCount: ${featureSummary.sampleCount}`,
-    `windowDays: ${featureSummary.windowDays}`,
-    `avgTemperatureC: ${featureSummary.avgTemperatureC}`,
-    `maxTemperatureC: ${featureSummary.maxTemperatureC}`,
-    `avgSoc: ${featureSummary.avgSoc}`,
-    `deepDischargeEvents: ${featureSummary.deepDischargeEvents}`,
-    `highTemperatureRatio: ${featureSummary.highTemperatureRatio}`,
-    `avgAbsoluteCurrentA: ${featureSummary.avgAbsoluteCurrentA}`,
-    `stressScore: ${featureSummary.stressScore}`,
-    `estimatedMonthsTo80: ${featureSummary.estimatedMonthsTo80}`,
-    `confidence: ${featureSummary.confidence}`,
-    `latest: ${JSON.stringify(featureSummary.latest)}`,
-    "",
-    "Required JSON shape:",
-    JSON.stringify({
-      overallHealth: "good | moderate | poor",
-      healthScore: "number 0-100",
-      summary: "string",
-      estimatedDegradeTimeline: {
-        to80PercentCapacityMonths: "number 1-120",
-        confidence: "low | medium | high",
-      },
-      topRisks: ["string up to 5 items"],
-      recommendedActions: [
-        { action: "string", impact: "low | medium | high", difficulty: "easy | medium | hard" },
-      ],
-      explanations: { key: "string explanation" },
-      disclaimer: "string",
-    }),
-  ].join("\n");
+const buildPrompt = (deviceId: string, f: BatteryFeatureSummary): string => {
+  const data = `dev=${deviceId} n=${f.sampleCount} days=${f.windowDays} avgT=${f.avgTemperatureC} maxT=${f.maxTemperatureC} avgSoc=${f.avgSoc} deepDis=${f.deepDischargeEvents} hiTempR=${f.highTemperatureRatio} avgI=${f.avgAbsoluteCurrentA} stress=${f.stressScore} mo80=${f.estimatedMonthsTo80} conf=${f.confidence} latestT=${f.latest.temperature} latestSoc=${f.latest.soc} latestV=${f.latest.voltage} latestI=${f.latest.current} latestP=${f.latest.power}`;
+
+  return `Battery diagnostics. JSON only, no markdown. Use only provided data.
+${data}
+Schema:{overallHealth:"good"|"moderate"|"poor",healthScore:0-100,summary:string,estimatedDegradeTimeline:{to80PercentCapacityMonths:1-120,confidence:"low"|"medium"|"high"},topRisks:string[max5],recommendedActions:[{action:string,impact:"low"|"medium"|"high",difficulty:"easy"|"medium"|"hard"}max4],explanations:{key:string},disclaimer:string}`;
 };
 
 const parseJsonSafely = (raw: string): unknown => {
@@ -300,47 +270,59 @@ const callGemini = async (prompt: string): Promise<string> => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
 
-  const model = process.env.GEMINI_MODEL || "gemini-2.0-flash";
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+  const model = process.env.GEMINI_MODEL || "gemini-3-flash-preview";
+
+  const ai = new GoogleGenAI({ apiKey });
+
+  const response = await ai.models.generateContent({
+    model,
+    contents: prompt,
+    config: {
+      temperature: 0.2,
+      maxOutputTokens: 1024,
+      responseMimeType: "application/json",
+      thinkingConfig: {
+        thinkingLevel: ThinkingLevel.MINIMAL,
       },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.2,
-          responseMimeType: "application/json",
-        },
-      }),
     },
-  );
+  });
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Gemini request failed (${response.status}): ${text}`);
-  }
-
-  const data = (await response.json()) as {
-    candidates?: Array<{
-      content?: { parts?: Array<{ text?: string }> };
-    }>;
-  };
-
-  const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  const content = response.text;
   if (!content) throw new Error("Gemini returned empty content");
   return content;
 };
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 2000;
 
 const generateAIInsight = async (
   provider: "openai" | "gemini",
   prompt: string,
 ): Promise<BatteryHealthInsight> => {
-  const raw = provider === "openai" ? await callOpenAI(prompt) : await callGemini(prompt);
-  const parsed = parseJsonSafely(raw);
-  return insightSchema.parse(parsed);
+  let lastError: Error | undefined;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const raw = provider === "openai" ? await callOpenAI(prompt) : await callGemini(prompt);
+      const parsed = parseJsonSafely(raw);
+      return insightSchema.parse(parsed);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      const isRateLimit = lastError.message.includes("429") || lastError.message.includes("RESOURCE_EXHAUSTED");
+
+      if (!isRateLimit || attempt === MAX_RETRIES) {
+        throw lastError;
+      }
+
+      const delay = BASE_DELAY_MS * 2 ** (attempt - 1);
+      console.warn(`[BatteryInsight] Rate-limited (attempt ${attempt}/${MAX_RETRIES}), retrying in ${delay}ms…`);
+      await sleep(delay);
+    }
+  }
+
+  throw lastError ?? new Error("AI insight generation failed after retries");
 };
 
 // ─── In-memory insight cache ─────────────────────────────────────────────────
@@ -439,7 +421,8 @@ export const getBatteryHealthInsight = async (deviceId: string): Promise<{
         providerUsed: provider,
         summary: featureSummary,
       };
-    } catch (_error) {
+    } catch (error) {
+      console.error(`[BatteryInsight] AI call failed (${provider}):`, error instanceof Error ? error.message : error);
       result = {
         insight: fallbackInsight,
         source: "heuristic",
