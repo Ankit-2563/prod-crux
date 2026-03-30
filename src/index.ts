@@ -2,6 +2,7 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import dotenv from "dotenv";
+import mongoose from "mongoose";
 import connectDB from "./config/database";
 import authRoutes from "./routes/auth.routes";
 import hardwareRoutes from "./routes/hardware.routes";
@@ -35,6 +36,11 @@ app.use(sanitizeRequest);
 // Connect to MongoDB
 connectDB();
 
+// Health check endpoint (used by Docker healthcheck)
+app.get("/health", (req: Request, res: Response) => {
+  res.status(200).json({ status: "ok" });
+});
+
 // Routes
 app.get("/", (req: Request, res: Response) => {
   res.json({ message: "Crux Server API", version: "1.0.0" });
@@ -58,6 +64,27 @@ app.use((err: any, req: Request, res: Response, next: any) => {
     .json({ success: false, message: err.message || "Internal server error" });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
+
+// Graceful shutdown for Docker (SIGTERM on container stop)
+const gracefulShutdown = (signal: string) => {
+  console.log(`\n${signal} received. Shutting down gracefully...`);
+  server.close(() => {
+    console.log("HTTP server closed.");
+    mongoose.connection.close().then(() => {
+      console.log("MongoDB connection closed.");
+      process.exit(0);
+    });
+  });
+
+  // Force exit after 10 seconds if graceful shutdown stalls
+  setTimeout(() => {
+    console.error("Forced shutdown after timeout.");
+    process.exit(1);
+  }, 10000);
+};
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
