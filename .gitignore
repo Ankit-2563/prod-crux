@@ -54,3 +54,6 @@ temp/
 
 # PM2
 .pm2/
+
+#pem files
+*.pem

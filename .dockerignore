@@ -10,3 +10,4 @@ docker-compose.yml
 *.md
 .DS_Store
 *.excalidraw
+*.pem

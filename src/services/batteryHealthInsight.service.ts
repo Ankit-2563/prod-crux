@@ -1,6 +1,28 @@
 import { z } from "zod";
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import BatteryMetric, { IBatteryMetric } from "../models/batteryMetric.model";
+import InsightCache from "../models/insightCache.model";
+
+// ─── Factory Thresholds (MVP) ────────────────────────────────────────────────
+// Based on 18650 3S BMS battery pack:
+//   Nominal Voltage : 11.1 V
+//   Full Charge     : 12.6 V
+//   Discharge CutOff:  9.0 V
+//   Capacity        : 8000 mAh
+// These are hard-coded for the MVP. In the future they can be stored per-device
+// in MongoDB and made configurable via a settings API.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const FACTORY_THRESHOLDS = {
+  /** Max safe temperature (°C) — above this is dangerous */
+  temperature: 60,
+  /** Min safe voltage (V) — below this the BMS should cut off */
+  voltage: 9,
+  /** Max safe continuous current (A) — 3A and above is considered overcurrent */
+  current: 3,
+  /** Max safe power draw (W) — above 40W is considered overload */
+  power: 40,
+} as const;
 
 type HealthLevel = "good" | "moderate" | "poor";
 type ConfidenceLevel = "low" | "medium" | "high";
@@ -14,6 +36,10 @@ interface BatteryFeatureSummary {
   deepDischargeEvents: number;
   highTemperatureRatio: number;
   avgAbsoluteCurrentA: number;
+  overTemperatureEvents: number;
+  underVoltageEvents: number;
+  overCurrentEvents: number;
+  overPowerEvents: number;
   latest: {
     temperature: number;
     soc: number;
@@ -25,6 +51,7 @@ interface BatteryFeatureSummary {
   stressScore: number;
   confidence: ConfidenceLevel;
   estimatedMonthsTo80: number;
+  thresholds: typeof FACTORY_THRESHOLDS;
 }
 
 export interface BatteryHealthInsight {
@@ -97,6 +124,22 @@ const buildFeatureSummary = (metrics: IBatteryMetric[]): BatteryFeatureSummary =
   const temperatures = sorted.map((m) => m.temperature);
   const socValues = sorted.map((m) => m.soc);
   const absCurrents = sorted.map((m) => Math.abs(m.current));
+  const voltages = sorted.map((m) => m.voltage);
+  const powers = sorted.map((m) => Math.abs(m.power));
+
+  // Threshold-based event counting
+  const overTemperatureEvents = temperatures.filter(
+    (t) => t >= FACTORY_THRESHOLDS.temperature,
+  ).length;
+  const underVoltageEvents = voltages.filter(
+    (v) => v <= FACTORY_THRESHOLDS.voltage,
+  ).length;
+  const overCurrentEvents = absCurrents.filter(
+    (i) => i >= FACTORY_THRESHOLDS.current,
+  ).length;
+  const overPowerEvents = powers.filter(
+    (p) => p >= FACTORY_THRESHOLDS.power,
+  ).length;
 
   const highTempCount = temperatures.filter((t) => t >= 40).length;
   const deepDischargeEvents = socValues.filter((s) => s <= 10).length;
@@ -104,13 +147,24 @@ const buildFeatureSummary = (metrics: IBatteryMetric[]): BatteryFeatureSummary =
   const deepDischargeRatio = deepDischargeEvents / sorted.length;
   const avgCurrent = safeAvg(absCurrents);
 
-  // Current stress is normalized to typical EV window averages (A). The old formula
-  // used `100 * 0.1 * (avgCurrent / 2)`, which hit the cap (~20A avg) and marked almost
-  // all EV-like data as maximum stress.
-  const referenceAvgCurrentA = 100;
-  const currentStressNorm = clamp(avgCurrent / referenceAvgCurrentA, 0, 1);
+  // Threshold violation ratios feed into stress
+  const overTempRatio = overTemperatureEvents / sorted.length;
+  const underVoltRatio = underVoltageEvents / sorted.length;
+  const overCurrentRatio = overCurrentEvents / sorted.length;
+  const overPowerRatio = overPowerEvents / sorted.length;
+
+  // Current stress normalized to the 3A factory threshold
+  const currentStressNorm = clamp(avgCurrent / FACTORY_THRESHOLDS.current, 0, 1);
+
+  // Composite stress now incorporates factory threshold violations
   const stressComposite = clamp(
-    0.5 * highTemperatureRatio + 0.35 * deepDischargeRatio + 0.15 * currentStressNorm,
+    0.25 * highTemperatureRatio +
+    0.15 * deepDischargeRatio +
+    0.10 * currentStressNorm +
+    0.15 * overTempRatio +
+    0.15 * underVoltRatio +
+    0.10 * overCurrentRatio +
+    0.10 * overPowerRatio,
     0,
     1,
   );
@@ -131,6 +185,10 @@ const buildFeatureSummary = (metrics: IBatteryMetric[]): BatteryFeatureSummary =
     deepDischargeEvents,
     highTemperatureRatio: round(highTemperatureRatio, 4),
     avgAbsoluteCurrentA: round(avgCurrent, 3),
+    overTemperatureEvents,
+    underVoltageEvents,
+    overCurrentEvents,
+    overPowerEvents,
     latest: {
       temperature: latest.temperature,
       soc: latest.soc,
@@ -142,6 +200,7 @@ const buildFeatureSummary = (metrics: IBatteryMetric[]): BatteryFeatureSummary =
     stressScore: round(stressScore, 2),
     confidence,
     estimatedMonthsTo80: round(estimatedMonthsTo80, 1),
+    thresholds: FACTORY_THRESHOLDS,
   };
 };
 
@@ -154,55 +213,99 @@ const buildDeterministicInsight = (
     healthScore >= 75 ? "good" : healthScore >= 45 ? "moderate" : "poor";
 
   const topRisks: string[] = [];
+
+  // Threshold-based risks
+  if (summary.overTemperatureEvents > 0) {
+    topRisks.push(
+      `Temperature exceeded ${FACTORY_THRESHOLDS.temperature}°C threshold ${summary.overTemperatureEvents} times`,
+    );
+  }
+  if (summary.underVoltageEvents > 0) {
+    topRisks.push(
+      `Voltage dropped below ${FACTORY_THRESHOLDS.voltage}V cut-off ${summary.underVoltageEvents} times`,
+    );
+  }
+  if (summary.overCurrentEvents > 0) {
+    topRisks.push(
+      `Current exceeded ${FACTORY_THRESHOLDS.current}A threshold ${summary.overCurrentEvents} times`,
+    );
+  }
+  if (summary.overPowerEvents > 0) {
+    topRisks.push(
+      `Power exceeded ${FACTORY_THRESHOLDS.power}W threshold ${summary.overPowerEvents} times`,
+    );
+  }
+
+  // Legacy stress-signal risks
   if (summary.highTemperatureRatio >= 0.25) {
-    topRisks.push("Frequent high temperature operation (>= 40C)");
+    topRisks.push("Frequent high temperature operation (>= 40°C)");
   }
   if (summary.deepDischargeEvents >= 10) {
     topRisks.push("Frequent deep discharge events (SOC <= 10%)");
   }
-  if (summary.avgAbsoluteCurrentA >= 85) {
-    topRisks.push("Sustained higher average current draw for this window");
-  }
+
   if (!topRisks.length) {
     topRisks.push("No major stress factors detected in available window");
+  }
+
+  // Latest reading immediate alerts
+  const alerts: string[] = [];
+  if (summary.latest.temperature >= FACTORY_THRESHOLDS.temperature) {
+    alerts.push(`⚠ LIVE: Temperature is ${summary.latest.temperature}°C (limit: ${FACTORY_THRESHOLDS.temperature}°C)`);
+  }
+  if (summary.latest.voltage <= FACTORY_THRESHOLDS.voltage) {
+    alerts.push(`⚠ LIVE: Voltage is ${summary.latest.voltage}V (min: ${FACTORY_THRESHOLDS.voltage}V)`);
+  }
+  if (Math.abs(summary.latest.current) >= FACTORY_THRESHOLDS.current) {
+    alerts.push(`⚠ LIVE: Current is ${Math.abs(summary.latest.current)}A (max: ${FACTORY_THRESHOLDS.current}A)`);
+  }
+  if (Math.abs(summary.latest.power) >= FACTORY_THRESHOLDS.power) {
+    alerts.push(`⚠ LIVE: Power is ${Math.abs(summary.latest.power)}W (max: ${FACTORY_THRESHOLDS.power}W)`);
   }
 
   return {
     overallHealth,
     healthScore,
-    summary: `Device ${deviceId} shows ${overallHealth} battery health based on ${summary.sampleCount} readings over ${summary.windowDays} days. This estimate uses stress signals (temperature, deep discharge frequency, and current draw) because direct capacity/cycle telemetry is not available.`,
+    summary: [
+      `Device ${deviceId} shows ${overallHealth} battery health based on ${summary.sampleCount} readings over ${summary.windowDays} days.`,
+      `Battery: 18650 3S pack (11.1V nominal, 12.6V full, 9V cutoff, 8000mAh).`,
+      `Factory thresholds — Temp: ${FACTORY_THRESHOLDS.temperature}°C, Voltage: ${FACTORY_THRESHOLDS.voltage}V, Current: ${FACTORY_THRESHOLDS.current}A, Power: ${FACTORY_THRESHOLDS.power}W.`,
+      ...alerts,
+    ].join(" "),
     estimatedDegradeTimeline: {
       to80PercentCapacityMonths: summary.estimatedMonthsTo80,
       confidence: summary.confidence,
     },
-    topRisks,
+    topRisks: topRisks.slice(0, 5),
     recommendedActions: [
       {
-        action: "Avoid prolonged charging or operation above 40C",
+        action: `Keep temperature below ${FACTORY_THRESHOLDS.temperature}°C — avoid charging in direct sunlight`,
         impact: "high",
         difficulty: "medium",
       },
       {
-        action: "Keep SOC mostly between 20% and 80% for daily use",
+        action: "Keep SOC between 20% and 80% for daily use",
         impact: "high",
         difficulty: "easy",
       },
       {
-        action: "Reduce heavy load usage while charging",
-        impact: "medium",
+        action: `Limit sustained current draw below ${FACTORY_THRESHOLDS.current}A`,
+        impact: "high",
         difficulty: "medium",
       },
       {
-        action: "Track weekly trends and alert when stress score rises",
-        impact: "medium",
+        action: `Do not let voltage drop below ${FACTORY_THRESHOLDS.voltage}V (BMS discharge cut-off)`,
+        impact: "high",
         difficulty: "easy",
       },
     ],
     explanations: {
       sampleWindow: `${summary.sampleCount} points over ${summary.windowDays} days`,
-      thermalStress: `High temperature ratio: ${(summary.highTemperatureRatio * 100).toFixed(1)}%`,
-      deepDischarge: `Deep discharge events: ${summary.deepDischargeEvents}`,
-      currentLoad: `Average absolute current: ${summary.avgAbsoluteCurrentA} A`,
+      thermalStress: `High temp ratio: ${(summary.highTemperatureRatio * 100).toFixed(1)}% | Over ${FACTORY_THRESHOLDS.temperature}°C events: ${summary.overTemperatureEvents}`,
+      voltageStress: `Under ${FACTORY_THRESHOLDS.voltage}V events: ${summary.underVoltageEvents}`,
+      currentLoad: `Avg |I|: ${summary.avgAbsoluteCurrentA}A | Over ${FACTORY_THRESHOLDS.current}A events: ${summary.overCurrentEvents}`,
+      powerLoad: `Over ${FACTORY_THRESHOLDS.power}W events: ${summary.overPowerEvents}`,
+      deepDischarge: `Deep discharge events (SOC ≤ 10%): ${summary.deepDischargeEvents}`,
       estimationModel:
         "Timeline is a heuristic estimate derived from stress signals, not a direct battery chemistry measurement.",
     },
@@ -212,9 +315,12 @@ const buildDeterministicInsight = (
 };
 
 const buildPrompt = (deviceId: string, f: BatteryFeatureSummary): string => {
-  const data = `dev=${deviceId} n=${f.sampleCount} days=${f.windowDays} avgT=${f.avgTemperatureC} maxT=${f.maxTemperatureC} avgSoc=${f.avgSoc} deepDis=${f.deepDischargeEvents} hiTempR=${f.highTemperatureRatio} avgI=${f.avgAbsoluteCurrentA} stress=${f.stressScore} mo80=${f.estimatedMonthsTo80} conf=${f.confidence} latestT=${f.latest.temperature} latestSoc=${f.latest.soc} latestV=${f.latest.voltage} latestI=${f.latest.current} latestP=${f.latest.power}`;
+  const data = `dev=${deviceId} n=${f.sampleCount} days=${f.windowDays} avgT=${f.avgTemperatureC} maxT=${f.maxTemperatureC} avgSoc=${f.avgSoc} deepDis=${f.deepDischargeEvents} hiTempR=${f.highTemperatureRatio} avgI=${f.avgAbsoluteCurrentA} stress=${f.stressScore} mo80=${f.estimatedMonthsTo80} conf=${f.confidence} latestT=${f.latest.temperature} latestSoc=${f.latest.soc} latestV=${f.latest.voltage} latestI=${f.latest.current} latestP=${f.latest.power} overTempEvt=${f.overTemperatureEvents} underVoltEvt=${f.underVoltageEvents} overCurrEvt=${f.overCurrentEvents} overPowEvt=${f.overPowerEvents}`;
+
+  const thresholds = `Factory thresholds: maxTemp=${FACTORY_THRESHOLDS.temperature}C minVolt=${FACTORY_THRESHOLDS.voltage}V maxCurrent=${FACTORY_THRESHOLDS.current}A maxPower=${FACTORY_THRESHOLDS.power}W. Battery: 18650 3S BMS, 11.1V nom, 12.6V full, 9V cutoff, 8000mAh.`;
 
   return `Battery diagnostics. JSON only, no markdown. Use only provided data.
+${thresholds}
 ${data}
 Schema:{overallHealth:"good"|"moderate"|"poor",healthScore:0-100,summary:string,estimatedDegradeTimeline:{to80PercentCapacityMonths:1-120,confidence:"low"|"medium"|"high"},topRisks:string[max5],recommendedActions:[{action:string,impact:"low"|"medium"|"high",difficulty:"easy"|"medium"|"hard"}max4],explanations:{key:string},disclaimer:string}`;
 };
@@ -325,41 +431,22 @@ const generateAIInsight = async (
   throw lastError ?? new Error("AI insight generation failed after retries");
 };
 
-// ─── In-memory insight cache ─────────────────────────────────────────────────
-// Battery health doesn't change second-to-second. Caching avoids redundant
-// Gemini/OpenAI calls and MongoDB queries. This runs on the server — the
-// React Native frontend just calls the same endpoint and gets faster responses.
+// ─── MongoDB-backed insight cache ────────────────────────────────────────────
+// Replaces the old in-memory Map cache. Benefits:
+//   1. Survives server restarts and deploys
+//   2. Works across multiple server instances (horizontal scaling)
+//   3. MongoDB TTL index auto-purges expired entries — zero manual eviction
+//   4. No memory pressure on the Node.js process
+// ─────────────────────────────────────────────────────────────────────────────
 
 const INSIGHT_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
-interface CachedInsight {
-  data: {
-    insight: BatteryHealthInsight;
-    source: "ai" | "heuristic";
-    providerUsed: "openai" | "gemini" | "none";
-    summary: BatteryFeatureSummary;
-  };
-  createdAt: number;
-}
-
-const insightCache = new Map<string, CachedInsight>();
-
-/** Evict stale entries (called automatically on every lookup) */
-const evictStale = (): void => {
-  const now = Date.now();
-  for (const [key, entry] of insightCache) {
-    if (now - entry.createdAt > INSIGHT_CACHE_TTL_MS) {
-      insightCache.delete(key);
-    }
-  }
-};
-
 /** Clear cache for a specific device (useful after new data ingestion) */
-export const clearInsightCache = (deviceId?: string): void => {
+export const clearInsightCache = async (deviceId?: string): Promise<void> => {
   if (deviceId) {
-    insightCache.delete(deviceId);
+    await InsightCache.deleteOne({ deviceId });
   } else {
-    insightCache.clear();
+    await InsightCache.deleteMany({});
   }
 };
 
@@ -370,11 +457,14 @@ export const getBatteryHealthInsight = async (deviceId: string): Promise<{
   summary: BatteryFeatureSummary;
   cached?: boolean;
 }> => {
-  // ── Check cache first ──────────────────────────────────────────────────────
-  evictStale();
-  const cached = insightCache.get(deviceId);
+  // ── Check MongoDB cache first ──────────────────────────────────────────────
+  const cached = await InsightCache.findOne({
+    deviceId,
+    expiresAt: { $gt: new Date() },
+  }).lean();
+
   if (cached) {
-    return { ...cached.data, cached: true };
+    return { ...cached.data as any, cached: true };
   }
 
   // ── Cache miss — run full pipeline ─────────────────────────────────────────
@@ -432,9 +522,16 @@ export const getBatteryHealthInsight = async (deviceId: string): Promise<{
     }
   }
 
-  // ── Store in cache ─────────────────────────────────────────────────────────
-  insightCache.set(deviceId, { data: result, createdAt: Date.now() });
+  // ── Store in MongoDB cache ─────────────────────────────────────────────────
+  await InsightCache.findOneAndUpdate(
+    { deviceId },
+    {
+      deviceId,
+      data: result,
+      expiresAt: new Date(Date.now() + INSIGHT_CACHE_TTL_MS),
+    },
+    { upsert: true, new: true },
+  );
 
   return result;
 };
-

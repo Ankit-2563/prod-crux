@@ -24,7 +24,7 @@ RUN npm ci --omit=dev
 
 # Copy compiled code from builder stage
 COPY --from=builder /app/dist ./dist
-
+ 
 EXPOSE 4000
 
 CMD ["npm", "start"]
