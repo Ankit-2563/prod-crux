@@ -468,9 +468,15 @@ export const getBatteryHealthInsight = async (deviceId: string): Promise<{
   }
 
   // ── Cache miss — run full pipeline ─────────────────────────────────────────
-  const metrics = await BatteryMetric.find({ deviceId })
+  // Fetch up to 1 year of historical data for comprehensive analysis
+  const oneYearAgo = new Date();
+  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+  const metrics = await BatteryMetric.find({
+    deviceId,
+    recordedAt: { $gte: oneYearAgo },
+  })
     .sort({ recordedAt: -1 })
-    .limit(2000)
     .select("temperature voltage power current soc recordedAt")
     .lean<IBatteryMetric[]>();
 
