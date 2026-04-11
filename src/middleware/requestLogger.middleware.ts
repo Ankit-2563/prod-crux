@@ -20,7 +20,7 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction): 
 
   // Log incoming request immediately
   console.log("\n" + "═".repeat(80));
-  console.log(`📥 INCOMING REQUEST  [${timestamp}]`);
+  console.log(`[INCOMING REQUEST]  [${timestamp}]`);
   console.log("─".repeat(80));
   console.log(`  Method:       ${requestInfo.method}`);
   console.log(`  URL:          ${requestInfo.url}`);
@@ -69,12 +69,12 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction): 
     const statusCode = res.statusCode;
 
     // Color code the status
-    let statusIcon = "✅";
-    if (statusCode >= 400 && statusCode < 500) statusIcon = "⚠️";
-    if (statusCode >= 500) statusIcon = "❌";
+    let statusPrefix = "[OK]";
+    if (statusCode >= 400 && statusCode < 500) statusPrefix = "[WARN]";
+    if (statusCode >= 500) statusPrefix = "[ERROR]";
 
     console.log("─".repeat(80));
-    console.log(`${statusIcon} RESPONSE  [${new Date().toISOString()}]`);
+    console.log(`${statusPrefix} RESPONSE  [${new Date().toISOString()}]`);
     console.log(`  Status: ${statusCode}  |  Duration: ${duration}ms`);
     console.log("═".repeat(80) + "\n");
 

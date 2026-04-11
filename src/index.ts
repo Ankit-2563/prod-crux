@@ -71,7 +71,7 @@ app.use((err: any, req: Request, res: Response, next: any) => {
 });
 
 const server = app.listen(PORT, () => {
-  console.log(`\n${'🚀'.repeat(1)} Crux Server started on port ${PORT}`);
+  console.log(`\n[START] Crux Server started on port ${PORT}`);
   console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`   Time: ${new Date().toISOString()}`);
   console.log(`   Logging: ALL requests will be logged below\n`);
