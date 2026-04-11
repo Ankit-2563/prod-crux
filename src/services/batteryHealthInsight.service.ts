@@ -33,6 +33,7 @@ interface BatteryFeatureSummary {
   avgTemperatureC: number;
   maxTemperatureC: number;
   avgSoc: number;
+  avgVoltage: number;
   deepDischargeEvents: number;
   highTemperatureRatio: number;
   avgAbsoluteCurrentA: number;
@@ -55,43 +56,19 @@ interface BatteryFeatureSummary {
 }
 
 export interface BatteryHealthInsight {
-  overallHealth: HealthLevel;
-  healthScore: number;
-  summary: string;
-  estimatedDegradeTimeline: {
-    to80PercentCapacityMonths: number;
-    confidence: ConfidenceLevel;
-  };
-  topRisks: string[];
-  recommendedActions: Array<{
-    action: string;
-    impact: "low" | "medium" | "high";
-    difficulty: "easy" | "medium" | "hard";
-  }>;
-  explanations: Record<string, string>;
-  disclaimer: string;
+  averageTemperature: number;
+  averageVoltage: number;
+  averageCurrent: number;
+  averageSoc: number;
+  recommendation: string;
 }
 
 const insightSchema = z.object({
-  overallHealth: z.enum(["good", "moderate", "poor"]),
-  healthScore: z.number().min(0).max(100),
-  summary: z.string().min(1),
-  estimatedDegradeTimeline: z.object({
-    to80PercentCapacityMonths: z.number().min(1).max(120),
-    confidence: z.enum(["low", "medium", "high"]),
-  }),
-  topRisks: z.array(z.string()).max(5),
-  recommendedActions: z
-    .array(
-      z.object({
-        action: z.string().min(1),
-        impact: z.enum(["low", "medium", "high"]),
-        difficulty: z.enum(["easy", "medium", "hard"]),
-      }),
-    )
-    .max(8),
-  explanations: z.record(z.string(), z.string()),
-  disclaimer: z.string().min(1),
+  averageTemperature: z.number(),
+  averageVoltage: z.number(),
+  averageCurrent: z.number(),
+  averageSoc: z.number(),
+  recommendation: z.string().min(1),
 });
 
 const round = (value: number, digits = 2): number => {
@@ -182,6 +159,7 @@ const buildFeatureSummary = (metrics: IBatteryMetric[]): BatteryFeatureSummary =
     avgTemperatureC: round(safeAvg(temperatures), 2),
     maxTemperatureC: round(Math.max(...temperatures), 2),
     avgSoc: round(safeAvg(socValues), 2),
+    avgVoltage: round(safeAvg(voltages), 2),
     deepDischargeEvents,
     highTemperatureRatio: round(highTemperatureRatio, 4),
     avgAbsoluteCurrentA: round(avgCurrent, 3),
@@ -208,121 +186,21 @@ const buildDeterministicInsight = (
   deviceId: string,
   summary: BatteryFeatureSummary,
 ): BatteryHealthInsight => {
-  const healthScore = round(clamp(100 - summary.stressScore, 0, 100), 0);
-  const overallHealth: HealthLevel =
-    healthScore >= 75 ? "good" : healthScore >= 45 ? "moderate" : "poor";
-
-  const topRisks: string[] = [];
-
-  // Threshold-based risks
-  if (summary.overTemperatureEvents > 0) {
-    topRisks.push(
-      `Temperature exceeded ${FACTORY_THRESHOLDS.temperature}°C threshold ${summary.overTemperatureEvents} times`,
-    );
-  }
-  if (summary.underVoltageEvents > 0) {
-    topRisks.push(
-      `Voltage dropped below ${FACTORY_THRESHOLDS.voltage}V cut-off ${summary.underVoltageEvents} times`,
-    );
-  }
-  if (summary.overCurrentEvents > 0) {
-    topRisks.push(
-      `Current exceeded ${FACTORY_THRESHOLDS.current}A threshold ${summary.overCurrentEvents} times`,
-    );
-  }
-  if (summary.overPowerEvents > 0) {
-    topRisks.push(
-      `Power exceeded ${FACTORY_THRESHOLDS.power}W threshold ${summary.overPowerEvents} times`,
-    );
-  }
-
-  // Legacy stress-signal risks
-  if (summary.highTemperatureRatio >= 0.25) {
-    topRisks.push("Frequent high temperature operation (>= 40°C)");
-  }
-  if (summary.deepDischargeEvents >= 10) {
-    topRisks.push("Frequent deep discharge events (SOC <= 10%)");
-  }
-
-  if (!topRisks.length) {
-    topRisks.push("No major stress factors detected in available window");
-  }
-
-  // Latest reading immediate alerts
-  const alerts: string[] = [];
-  if (summary.latest.temperature >= FACTORY_THRESHOLDS.temperature) {
-    alerts.push(`⚠ LIVE: Temperature is ${summary.latest.temperature}°C (limit: ${FACTORY_THRESHOLDS.temperature}°C)`);
-  }
-  if (summary.latest.voltage <= FACTORY_THRESHOLDS.voltage) {
-    alerts.push(`⚠ LIVE: Voltage is ${summary.latest.voltage}V (min: ${FACTORY_THRESHOLDS.voltage}V)`);
-  }
-  if (Math.abs(summary.latest.current) >= FACTORY_THRESHOLDS.current) {
-    alerts.push(`⚠ LIVE: Current is ${Math.abs(summary.latest.current)}A (max: ${FACTORY_THRESHOLDS.current}A)`);
-  }
-  if (Math.abs(summary.latest.power) >= FACTORY_THRESHOLDS.power) {
-    alerts.push(`⚠ LIVE: Power is ${Math.abs(summary.latest.power)}W (max: ${FACTORY_THRESHOLDS.power}W)`);
-  }
-
   return {
-    overallHealth,
-    healthScore,
-    summary: [
-      `Device ${deviceId} shows ${overallHealth} battery health based on ${summary.sampleCount} readings over ${summary.windowDays} days.`,
-      `Battery: 18650 3S pack (11.1V nominal, 12.6V full, 9V cutoff, 8000mAh).`,
-      `Factory thresholds — Temp: ${FACTORY_THRESHOLDS.temperature}°C, Voltage: ${FACTORY_THRESHOLDS.voltage}V, Current: ${FACTORY_THRESHOLDS.current}A, Power: ${FACTORY_THRESHOLDS.power}W.`,
-      ...alerts,
-    ].join(" "),
-    estimatedDegradeTimeline: {
-      to80PercentCapacityMonths: summary.estimatedMonthsTo80,
-      confidence: summary.confidence,
-    },
-    topRisks: topRisks.slice(0, 5),
-    recommendedActions: [
-      {
-        action: `Keep temperature below ${FACTORY_THRESHOLDS.temperature}°C — avoid charging in direct sunlight`,
-        impact: "high",
-        difficulty: "medium",
-      },
-      {
-        action: "Keep SOC between 20% and 80% for daily use",
-        impact: "high",
-        difficulty: "easy",
-      },
-      {
-        action: `Limit sustained current draw below ${FACTORY_THRESHOLDS.current}A`,
-        impact: "high",
-        difficulty: "medium",
-      },
-      {
-        action: `Do not let voltage drop below ${FACTORY_THRESHOLDS.voltage}V (BMS discharge cut-off)`,
-        impact: "high",
-        difficulty: "easy",
-      },
-    ],
-    explanations: {
-      sampleWindow: `${summary.sampleCount} points over ${summary.windowDays} days`,
-      thermalStress: `High temp ratio: ${(summary.highTemperatureRatio * 100).toFixed(1)}% | Over ${FACTORY_THRESHOLDS.temperature}°C events: ${summary.overTemperatureEvents}`,
-      voltageStress: `Under ${FACTORY_THRESHOLDS.voltage}V events: ${summary.underVoltageEvents}`,
-      currentLoad: `Avg |I|: ${summary.avgAbsoluteCurrentA}A | Over ${FACTORY_THRESHOLDS.current}A events: ${summary.overCurrentEvents}`,
-      powerLoad: `Over ${FACTORY_THRESHOLDS.power}W events: ${summary.overPowerEvents}`,
-      deepDischarge: `Deep discharge events (SOC ≤ 10%): ${summary.deepDischargeEvents}`,
-      estimationModel:
-        "Timeline is a heuristic estimate derived from stress signals, not a direct battery chemistry measurement.",
-    },
-    disclaimer:
-      "This is an estimated advisory based on telemetry trends and not a guaranteed lifespan prediction.",
+    averageTemperature: summary.avgTemperatureC,
+    averageVoltage: summary.avgVoltage,
+    averageCurrent: summary.avgAbsoluteCurrentA,
+    averageSoc: summary.avgSoc,
+    recommendation: "Keep temperature below 60°C and maintain SOC between 20% and 80% for optimal battery life.",
   };
 };
 
 const buildPrompt = (deviceId: string, f: BatteryFeatureSummary): string => {
-  const data = `dev=${deviceId} n=${f.sampleCount} days=${f.windowDays} avgT=${f.avgTemperatureC} maxT=${f.maxTemperatureC} avgSoc=${f.avgSoc} deepDis=${f.deepDischargeEvents} hiTempR=${f.highTemperatureRatio} avgI=${f.avgAbsoluteCurrentA} stress=${f.stressScore} mo80=${f.estimatedMonthsTo80} conf=${f.confidence} latestT=${f.latest.temperature} latestSoc=${f.latest.soc} latestV=${f.latest.voltage} latestI=${f.latest.current} latestP=${f.latest.power} overTempEvt=${f.overTemperatureEvents} underVoltEvt=${f.underVoltageEvents} overCurrEvt=${f.overCurrentEvents} overPowEvt=${f.overPowerEvents}`;
+  const data = `avgVoltage=${f.avgVoltage} avgTemperature=${f.avgTemperatureC} avgCurrent=${f.avgAbsoluteCurrentA} avgSoc=${f.avgSoc}`;
 
-  const thresholds = `Factory thresholds: maxTemp=${FACTORY_THRESHOLDS.temperature}C minVolt=${FACTORY_THRESHOLDS.voltage}V maxCurrent=${FACTORY_THRESHOLDS.current}A maxPower=${FACTORY_THRESHOLDS.power}W. Battery: 18650 3S BMS, 11.1V nom, 12.6V full, 9V cutoff, 8000mAh.`;
-
-  return `Battery diagnostics. JSON only, no markdown. Use only provided data.
-${thresholds}
+  return `Battery diagnostics. JSON only, no markdown. Use only provided data. Make the recommendation a short, single paragraph.
 ${data}
-Schema:{overallHealth:"good"|"moderate"|"poor",healthScore:0-100,summary:string,estimatedDegradeTimeline:{to80PercentCapacityMonths:1-120,confidence:"low"|"medium"|"high"},topRisks:string[max5],recommendedActions:[{action:string,impact:"low"|"medium"|"high",difficulty:"easy"|"medium"|"hard"}max4],explanations:{key:string},disclaimer:string}`;
+Schema:{"averageTemperature": number, "averageVoltage": number, "averageCurrent": number, "averageSoc": number, "recommendation": "string"}`;
 };
 
 const parseJsonSafely = (raw: string): unknown => {
