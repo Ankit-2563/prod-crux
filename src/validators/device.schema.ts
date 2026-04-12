@@ -36,7 +36,7 @@ export const batteryDataSchema = z.object({
   power: z.number({ message: "power must be a number" }),
   current: z.number({ message: "current must be a number" }),
   soc: z.number({ message: "soc must be a number" }),
-  recordedAt: z.string().datetime().optional(),
+  recordedAt: z.union([z.string().datetime(), z.number().int().positive()]).optional(),
 });
 
 export type HardwareRegisterInput = z.infer<typeof hardwareRegisterSchema>;
