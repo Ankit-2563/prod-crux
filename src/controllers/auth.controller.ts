@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import User from "../models/user.model";
+import Device from "../models/device.model";
 import TokenBlacklist from "../models/tokenBlacklist.model";
 import RefreshToken from "../models/refreshToken.model";
 import { AuthRequest } from "../middleware/auth.middleware";
@@ -272,6 +273,8 @@ export const getCurrentUser = async (
       return;
     }
 
+    const device = await Device.findOne({ userId: req.user.id });
+
     res.status(200).json({
       success: true,
       data: {
@@ -279,6 +282,8 @@ export const getCurrentUser = async (
           id: user._id,
           name: user.name,
           email: user.email,
+          pairedDeviceId: device ? device.deviceId : null,
+          pairedDeviceName: device ? device.deviceName : null,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
         },
