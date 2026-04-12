@@ -37,7 +37,11 @@ export const receiveBatteryData = async (
       power,
       current,
       soc,
-      recordedAt: recordedAt ? new Date(recordedAt) : new Date(),
+      recordedAt: recordedAt
+        ? (typeof recordedAt === "number"
+            ? new Date(recordedAt * 1000)   // firmware sends unix seconds
+            : new Date(recordedAt))         // ISO string from future clients
+        : new Date(),
     });
 
     // ── 2. Update device lastSeen ───────────────────────────────────────────
