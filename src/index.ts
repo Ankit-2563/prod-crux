@@ -9,7 +9,6 @@ import hardwareRoutes from "./routes/hardware.routes";
 import deviceRoutes from "./routes/device.routes";
 import batteryRoutes from "./routes/battery.routes";
 import { sanitizeRequest } from "./middleware/sanitize.middleware";
-import { requestLogger } from "./middleware/requestLogger.middleware";
 
 dotenv.config();
 
@@ -32,9 +31,6 @@ app.use(cors(corsOptions));
 // Body Parser Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// Request Logging — logs every incoming request and its response
-app.use(requestLogger);
 
 // MongoDB Sanitization
 app.use(sanitizeRequest);
@@ -74,7 +70,6 @@ const server = app.listen(PORT, () => {
   console.log(`\n[START] Crux Server started on port ${PORT}`);
   console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`   Time: ${new Date().toISOString()}`);
-  console.log(`   Logging: ALL requests will be logged below\n`);
 });
 
 // Graceful shutdown for Docker (SIGTERM on container stop)
