@@ -8,6 +8,7 @@ export interface IBatteryMetric extends Document {
   power: number;        // W
   current: number;      // A
   soc: number;          // % (state of charge)
+  chargeStatus: "charging" | "discharging" | "idle" | null;
   recordedAt: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -46,6 +47,11 @@ const batteryMetricSchema = new Schema<IBatteryMetric>(
     soc: {
       type: Number,
       required: [true, "soc is required"],
+    },
+    chargeStatus: {
+      type: String,
+      enum: ["charging", "discharging", "idle"],
+      default: null,
     },
     recordedAt: {
       type: Date,

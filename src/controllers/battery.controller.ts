@@ -25,6 +25,7 @@ export const receiveBatteryData = async (
       power,
       current,
       soc,
+      chargeStatus,
       recordedAt,
     } = req.body;
 
@@ -37,6 +38,7 @@ export const receiveBatteryData = async (
       power,
       current,
       soc,
+      chargeStatus: chargeStatus ?? null,
       recordedAt: recordedAt
         ? (typeof recordedAt === "number"
             ? new Date(recordedAt * 1000)   // firmware sends unix seconds
@@ -139,7 +141,7 @@ export const getBatteryMetrics = async (
 const getLatestDeviceField = async (
   req: AuthRequest,
   res: Response,
-  field: "temperature" | "power" | "voltage" | "current" | "soc"
+  field: "temperature" | "power" | "voltage" | "current" | "soc" | "chargeStatus"
 ): Promise<void> => {
   try {
     const { deviceId } = req.params;
@@ -208,7 +210,7 @@ export const getDeviceAllMetrics = async (req: AuthRequest, res: Response): Prom
 
     const latest = await BatteryMetric.findOne({ deviceId })
       .sort({ recordedAt: -1 })
-      .select("deviceId recordedAt temperature power voltage current soc")
+      .select("deviceId recordedAt temperature power voltage current soc chargeStatus")
       .lean();
 
     if (!latest) {
@@ -226,6 +228,7 @@ export const getDeviceAllMetrics = async (req: AuthRequest, res: Response): Prom
         voltage: latest.voltage,
         current: latest.current,
         soc: latest.soc,
+        chargeStatus: latest.chargeStatus ?? null,
       },
     });
   } catch (error: any) {

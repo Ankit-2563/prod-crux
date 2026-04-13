@@ -36,6 +36,9 @@ export const batteryDataSchema = z.object({
   power: z.number({ message: "power must be a number" }),
   current: z.number({ message: "current must be a number" }),
   soc: z.number({ message: "soc must be a number" }),
+  chargeStatus: z.enum(["charging", "discharging", "idle"], {
+    message: "chargeStatus must be 'charging', 'discharging', or 'idle'",
+  }).optional(),
   recordedAt: z.union([z.string().datetime(), z.number().int().positive()]).optional(),
 });
 
