@@ -10,6 +10,9 @@ import deviceRoutes from "./routes/device.routes";
 import batteryRoutes from "./routes/battery.routes";
 import { sanitizeRequest } from "./middleware/sanitize.middleware";
 
+import pinoHttp from "pino-http";
+import logger from "./config/logger";
+
 dotenv.config();
 
 const app = express();
@@ -19,6 +22,22 @@ const PORT = process.env.PORT || 4000;
 
 // Security Middleware
 app.use(helmet());
+
+app.use(
+  pinoHttp({
+    logger,
+    serializers: {
+      req: () => undefined,
+      res: () => undefined,
+    },
+    customSuccessMessage: function (req, res) {
+      return `[${req.method}] ${req.url} - ${res.statusCode}`;
+    },
+    customErrorMessage: function (req, res, err) {
+      return `[${req.method}] ${req.url} - ${res.statusCode} - ${err.message}`;
+    },
+  })
+);
 
 // CORS — open for React Native & hardware clients (CORS is browser-only)
 // Restricted to local dev or explicitly configured origin
@@ -60,32 +79,32 @@ app.use((req: Request, res: Response) => {
 
 // Error handler
 app.use((err: any, req: Request, res: Response, next: any) => {
-  console.error(err.stack);
+  logger.error(err);
   res
     .status(500)
     .json({ success: false, message: err.message || "Internal server error" });
 });
 
 const server = app.listen(PORT, () => {
-  console.log(`\n[START] Crux Server started on port ${PORT}`);
-  console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`   Time: ${new Date().toISOString()}`);
+  logger.info(`\n[START] Crux Server started on port ${PORT}`);
+  logger.info(`   Environment: ${process.env.NODE_ENV || 'development'}`);
+  logger.info(`   Time: ${new Date().toISOString()}`);
 });
 
 // Graceful shutdown for Docker (SIGTERM on container stop)
 const gracefulShutdown = (signal: string) => {
-  console.log(`\n${signal} received. Shutting down gracefully...`);
+  logger.info(`\n${signal} received. Shutting down gracefully...`);
   server.close(() => {
-    console.log("HTTP server closed.");
+    logger.info("HTTP server closed.");
     mongoose.connection.close().then(() => {
-      console.log("MongoDB connection closed.");
+      logger.info("MongoDB connection closed.");
       process.exit(0);
     });
   });
 
   // Force exit after 10 seconds if graceful shutdown stalls
   setTimeout(() => {
-    console.error("Forced shutdown after timeout.");
+    logger.error("Forced shutdown after timeout.");
     process.exit(1);
   }, 10000);
 };
