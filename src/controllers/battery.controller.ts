@@ -25,7 +25,6 @@ export const receiveBatteryData = async (
       power,
       current,
       soc,
-      chargeStatus,
       recordedAt,
     } = req.body;
 
@@ -38,7 +37,6 @@ export const receiveBatteryData = async (
       power,
       current,
       soc,
-      chargeStatus: chargeStatus ?? null,
       recordedAt: recordedAt
         ? (typeof recordedAt === "number"
             ? new Date(recordedAt * 1000)   // firmware sends unix seconds

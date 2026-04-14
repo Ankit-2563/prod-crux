@@ -27,14 +27,31 @@ app.use(
   pinoHttp({
     logger,
     serializers: {
-      req: () => undefined,
-      res: () => undefined,
+      req: (req) => ({
+        method: req.method,
+        url: req.url,
+        headers: {
+          'x-device-id': req.headers['x-device-id'],
+          'content-type': req.headers['content-type'],
+        },
+        ...((['POST', 'PUT', 'PATCH'].includes(req.method)) && req.raw?.body
+          ? { body: req.raw.body }
+          : {}),
+      }),
+      res: (res) => ({
+        statusCode: res.statusCode,
+      }),
     },
     customSuccessMessage: function (req, res) {
-      return `[${req.method}] ${req.url} - ${res.statusCode}`;
+      return `${req.method} ${req.url} → ${res.statusCode} (${res.getHeader('x-response-time') || '-'}ms)`;
     },
     customErrorMessage: function (req, res, err) {
-      return `[${req.method}] ${req.url} - ${res.statusCode} - ${err.message}`;
+      return `${req.method} ${req.url} → ${res.statusCode} ERROR: ${err.message}`;
+    },
+    customProps: function (req) {
+      return {
+        responseTime: undefined, // pino-http adds this automatically
+      };
     },
   })
 );
