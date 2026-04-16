@@ -58,11 +58,11 @@ app.use(
 
 // CORS — open for React Native & hardware clients (CORS is browser-only)
 // Restricted to local dev or explicitly configured origin
-app.use(
-  cors({
-    origin: "*",
-  }),
-);
+const corsOptions = {
+  origin: process.env.CORS_ORIGIN,
+  credentials: true,
+};
+app.use(cors(corsOptions));
 
 // Body Parser Middleware
 app.use(express.json());
