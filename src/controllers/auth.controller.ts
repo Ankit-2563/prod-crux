@@ -20,9 +20,9 @@ if (!REFRESH_SECRET) {
   throw new Error("REFRESH_SECRET not defined");
 }
 
-// Generate short-lived access token (15 minutes)
+// Generate short-lived access token (60 minutes)
 const generateAccessToken = (userId: string): string => {
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: "15m" });
+  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: "60m" });
 };
 
 // Generate long-lived refresh token (30 days)
