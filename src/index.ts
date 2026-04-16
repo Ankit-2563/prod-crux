@@ -26,6 +26,9 @@ app.use(helmet());
 app.use(
   pinoHttp({
     logger,
+    autoLogging: {
+      ignore: (req) => req.url?.startsWith("/health") || false,
+    },
     serializers: {
       req: (req) => ({
         method: req.method,
